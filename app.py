@@ -17,17 +17,39 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ─── Helper: Strip emojis for PDF ────────────────────────
-def strip_emojis(text):
+# ─── Helper: Clean text for PDF (Unicode → ASCII) ───────
+def clean_for_pdf(text):
+    replacements = {
+        '—': '--',
+        '–': '-',
+        ''': "'",
+        ''': "'",
+        '"': '"',
+        '"': '"',
+        '…': '...',
+        '•': '-',
+        '→': '->',
+        '←': '<-',
+        '€': 'EUR',
+        '£': 'GBP',
+        '¥': 'JPY',
+        '°': ' deg',
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    
     emoji_pattern = re.compile("["
-        u"\U0001F600-\U0001F64F"  # emoticons
-        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-        u"\U0001F680-\U0001F6FF"  # transport & map symbols
-        u"\U0001F1E0-\U0001F1FF"  # flags
+        u"\U0001F600-\U0001F64F"
+        u"\U0001F300-\U0001F5FF"
+        u"\U0001F680-\U0001F6FF"
+        u"\U0001F1E0-\U0001F1FF"
         u"\U00002702-\U000027B0"
         u"\U000024C2-\U0001F251"
         "]+", flags=re.UNICODE)
-    return emoji_pattern.sub('', text)
+    text = emoji_pattern.sub('', text)
+    text = text.replace('#', '').replace('**', '').replace('*', '').replace('---', '').replace('>', '')
+    text = text.encode('latin-1', 'ignore').decode('latin-1')
+    return text
 
 # ─── Helper: Get Destination Image from Wikipedia ────────
 @st.cache_data(show_spinner=False)
@@ -53,11 +75,9 @@ def create_pdf(destination, duration, budget, currency, content):
     pdf.cell(0, 10, f"{duration} Days | Budget: {budget} {currency}", ln=True, align="C")
     pdf.ln(8)
     pdf.set_font("Arial", "", 11)
-    # Clean text for PDF (no emojis, no markdown)
-    clean = content.replace('#', '').replace('**', '').replace('*', '').replace('---', '').replace('>', '')
-    clean = strip_emojis(clean)
+    clean = clean_for_pdf(content)
     pdf.multi_cell(0, 7, clean)
-    return pdf.output(dest="S").encode("latin-1")
+    return bytes(pdf.output(dest="S"))
 
 # ─── Header ──────────────────────────────────────────────
 st.markdown('<div class="main-title">TravelAgent AI</div>', unsafe_allow_html=True)
@@ -110,7 +130,6 @@ if plan_btn:
             st.balloons()
             st.success("Your trip is ready!")
             
-            # Tabs for organized viewing
             tab1, tab2, tab3 = st.tabs(["Full Itinerary", "Budget Focus", "Export"])
             
             with tab1:
@@ -143,7 +162,5 @@ if plan_btn:
 
 # ─── Footer ──────────────────────────────────────────────
 st.markdown("---")
-st.markdown(
-    "<div style='text-align:center; color:#9CA3AF; font-size:0.85rem;'>"
-    "Built with Python + Groq LLM + Streamlit | "
-    "<a href='
+footer_html = "<div style='text-align:center; color:#9CA3AF; font-size:0.85rem;'>Built with Python + Groq LLM + Streamlit | <a href='https://github.com/khodor2341/travel-agent' target='_blank'>View on GitHub</a></div>"
+st.markdown(footer_html, unsafe_allow_html=True)
