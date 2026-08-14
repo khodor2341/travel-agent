@@ -129,19 +129,53 @@ left, right = st.columns([1, 1])
 with left:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### Trip Details")
+    
+    # ─── TEMPLATE BUTTONS ──────────────────────────────
+    st.markdown("**Quick Templates:**")
+    t1, t2, t3, t4, t5 = st.columns(5)
+    
+    with t1:
+        if st.button("💑 Romantic", use_container_width=True):
+            st.session_state['template_prefs'] = "romantic sunsets, fine dining, couples activities, boutique hotels, wine tasting, photography"
+            st.session_state['template_budget_mult'] = 1.5
+            st.rerun()
+    with t2:
+        if st.button("👨‍👩‍👧 Family", use_container_width=True):
+            st.session_state['template_prefs'] = "kid-friendly attractions, theme parks, easy transport, family suites, interactive museums, parks"
+            st.session_state['template_budget_mult'] = 1.2
+            st.rerun()
+    with t3:
+        if st.button("🏔️ Adventure", use_container_width=True):
+            st.session_state['template_prefs'] = "hiking, extreme sports, outdoor adventures, hostels, local street food, nature photography"
+            st.session_state['template_budget_mult'] = 0.8
+            st.rerun()
+    with t4:
+        if st.button("💎 Luxury", use_container_width=True):
+            st.session_state['template_prefs'] = "5-star hotels, private tours, Michelin dining, spa wellness, luxury shopping, helicopter tours"
+            st.session_state['template_budget_mult'] = 3.0
+            st.rerun()
+    with t5:
+        if st.button("🎒 Budget", use_container_width=True):
+            st.session_state['template_prefs'] = "hostels, street food, free attractions, public transport, walking tours, local markets"
+            st.session_state['template_budget_mult'] = 0.5
+            st.rerun()
+    
+    st.markdown("---")
+    
     destination = st.text_input("Where to?", "Tokyo, Japan", placeholder="e.g. Santorini, Greece")
     
     c1, c2, c3 = st.columns(3)
     with c1:
         duration = st.number_input("Days", 1, 14, 3)
     with c2:
-        start_date = st.date_input("Start Date", value=None, label_visibility="visible")
+        start_date = st.date_input("Start Date", value=None)
     with c3:
-        budget = st.number_input("Budget", 100, 50000, 2000)
+        default_budget = int(2000 * st.session_state.get('template_budget_mult', 1.0))
+        budget = st.number_input("Budget", 100, 50000, default_budget)
     
     currency = st.selectbox("Currency", ["USD", "EUR", "GBP", "JPY", "AED", "CAD"])
     preferences = st.text_area("Travel Style & Preferences", 
-        "local food, photography spots, walking tours, avoid tourist traps",
+        value=st.session_state.get('template_prefs', "local food, photography spots, walking tours, avoid tourist traps"),
         placeholder="What do you love? Any must-haves or deal-breakers?")
     
     plan_btn = st.button("Generate My Trip", type="primary", use_container_width=True)
