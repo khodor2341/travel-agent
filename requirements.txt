@@ -1,3 +1,5 @@
 python-dotenv
 streamlit
 groq
+fpdf2
+requests
