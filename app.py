@@ -65,16 +65,19 @@ def clean_for_pdf(text):
     text = emoji.sub('', text).replace('#', '').replace('**', '').replace('*', '').replace('---', '').replace('>', '')
     return text.encode('latin-1', 'ignore').decode('latin-1')
 
-def create_pdf(destination, duration, budget, currency, content, company, contact, color):
+def create_pdf(destination, duration, budget, currency, content, company, contact, color, client_name=""):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_fill_color(int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16))
-    pdf.rect(0, 0, 210, 25, 'F')
+    pdf.rect(0, 0, 210, 30, 'F')
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Arial", "B", 16)
     pdf.cell(0, 10, company, ln=True, align="C")
     pdf.set_font("Arial", "", 10)
     pdf.cell(0, 6, contact, ln=True, align="C")
+    if client_name:
+        pdf.set_font("Arial", "I", 10)
+        pdf.cell(0, 6, f"Prepared for: {client_name}", ln=True, align="C")
     pdf.ln(5)
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", "B", 18)
@@ -163,7 +166,8 @@ with left:
     st.markdown("---")
     
     destination = st.text_input("Where to?", "Tokyo, Japan", placeholder="e.g. Santorini, Greece")
-    
+    client_name = st.text_input("Client Name (optional)", "", placeholder="e.g. Sarah Ahmed")
+    client_email = st.text_input("Client Email (optional)", "", placeholder="For direct email share")
     c1, c2, c3 = st.columns(3)
     with c1:
         duration = st.number_input("Days", 1, 14, 3)
@@ -207,7 +211,9 @@ if plan_btn:
             st.session_state['trip_meta'] = {
                 "destination": destination, "duration": duration,
                 "budget": budget, "currency": currency,
-                "start_date": start_date.strftime("%Y-%m-%d") if start_date else None
+                "start_date": start_date.strftime("%Y-%m-%d") if start_date else None,
+                "client_name": client_name,
+                "client_email": client_email
             }
             
             save_trip(destination, duration, budget, currency, preferences, result)
@@ -264,14 +270,20 @@ if 'trip_result' in st.session_state:
     with tab4:
         st.markdown("### 📄 Export Final Version")
         final_text = st.session_state.get('trip_result', result)
-        pdf_bytes = create_pdf(meta['destination'], meta['duration'], meta['budget'], meta['currency'], final_text, company_name, contact_info, brand_color)
+        pdf_bytes = create_pdf(meta['destination'], meta['duration'], meta['budget'], meta['currency'], final_text, company_name, contact_info, brand_color, meta.get('client_name', ''))
         st.download_button(
             "📥 Download Branded PDF",
             pdf_bytes,
             f"{company_name.replace(' ', '_')}_Trip_{meta['destination'].replace(' ', '_').replace(',', '')}.pdf",
             "application/pdf"
         )
-        
+        st.markdown("---")
+        if meta.get('client_email'):
+            subject = requests.utils.quote(f"Your Travel Plan: {meta['destination']}")
+            body = requests.utils.quote(f"Hi {meta.get('client_name', 'there')},\n\nPlease find your personalized travel plan for {meta['destination']} attached.\n\nBest regards,\n{company_name}")
+            st.markdown(f"[📧 Email to Client](mailto:{meta['client_email']}?subject={subject}&body={body})", unsafe_allow_html=True)
+        else:
+            st.caption("Add client email to enable one-click email share")
         st.markdown("---")
         st.markdown("**Share via WhatsApp:**")
         whatsapp_text = requests.utils.quote(clean_for_pdf(final_text)[:500] + f"...\n\nPlanned by {company_name}")
