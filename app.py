@@ -4,16 +4,17 @@ import re
 from agents import run_trip_planner
 from fpdf import FPDF
 from database import save_trip, get_all_trips, get_trip, delete_trip
+from visuals import get_unsplash_photos, parse_budget_data, render_budget_chart
 
 st.set_page_config(page_title="TravelAgent AI", page_icon="✈️", layout="wide")
 
-# ─── SIDEBAR ─────────────────────────────────────────────
+# ─── SIDEBAR: Brand Settings + Trip History ──────────────
 with st.sidebar:
     st.markdown("### 🎨 Brand Settings")
     company_name = st.text_input("Company Name", "TravelAgent AI")
-    logo_url = st.text_input("Logo URL", "")
+    logo_url = st.text_input("Logo URL", "", placeholder="https://your-logo.png")
     brand_color = st.color_picker("Brand Color", "#1E3A8A")
-    contact_info = st.text_input("Contact", "contact@travelagent.ai")
+    contact_info = st.text_input("Contact / Website", "contact@travelagent.ai")
     
     st.markdown("---")
     st.markdown("### 📚 Trip History")
@@ -41,16 +42,18 @@ with st.sidebar:
         st.caption("No saved trips yet.")
     
     st.markdown("---")
-    st.caption("Built by Khodor")
+    st.caption("Built by Khodor | [GitHub](https://github.com/khodor2341/travel-agent)")
 
-# ─── CSS ─────────────────────────────────────────────────
+# ─── Dynamic CSS ─────────────────────────────────────────
 st.markdown(f"""
 <style>
     .main-title {{ font-size: 3rem; font-weight: 800; color: {brand_color}; }}
     .subtitle {{ font-size: 1.1rem; color: #6B7280; margin-bottom: 2rem; }}
     .stButton>button {{ background-color: {brand_color}; color: white; border-radius: 10px; padding: 0.8rem 2rem; font-weight: 600; }}
+    .stButton>button:hover {{ opacity: 0.9; transform: translateY(-2px); }}
     .card {{ background: #F8FAFC; border-radius: 16px; padding: 1.5rem; border: 1px solid #E2E8F0; }}
     .map-link {{ color: #2563EB; text-decoration: none; font-size: 0.85rem; }}
+    .map-link:hover {{ text-decoration: underline; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -105,7 +108,7 @@ def add_map_links(text, destination):
         match = re.match(r'^(\s*[\d\-:\.]+\s*)(.+?)(\s*\(.+?\))?$', line)
         if match and len(match.group(2).strip()) > 3:
             place = match.group(2).strip()
-            skip = ['lunch', 'dinner', 'breakfast', 'hotel', 'transport', 'flight', 'check-in', 'check-out', 'buffer', 'free time', 'rest', 'travel']
+            skip = ['lunch', 'dinner', 'breakfast', 'hotel', 'transport', 'flight', 'check-in', 'check-out', 'buffer', 'free time', 'rest', 'travel', 'arrival', 'departure']
             if not any(s in place.lower() for s in skip):
                 query = f"{place}, {destination.split(',')[0]}"
                 maps_url = f"https://www.google.com/maps/search/?api=1&query={requests.utils.quote(query)}"
@@ -126,12 +129,19 @@ left, right = st.columns([1, 1])
 with left:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### Trip Details")
-    destination = st.text_input("Where to?", "Tokyo, Japan")
+    destination = st.text_input("Where to?", "Tokyo, Japan", placeholder="e.g. Santorini, Greece")
+    
     c1, c2 = st.columns(2)
-    with c1: duration = st.number_input("Days", 1, 14, 3)
-    with c2: budget = st.number_input("Budget", 100, 50000, 2000)
+    with c1:
+        duration = st.number_input("Days", 1, 14, 3)
+    with c2:
+        budget = st.number_input("Budget", 100, 50000, 2000)
+    
     currency = st.selectbox("Currency", ["USD", "EUR", "GBP", "JPY", "AED", "CAD"])
-    preferences = st.text_area("Travel Style", "local food, photography, walking tours, avoid crowds")
+    preferences = st.text_area("Travel Style & Preferences", 
+        "local food, photography spots, walking tours, avoid tourist traps",
+        placeholder="What do you love? Any must-haves or deal-breakers?")
+    
     plan_btn = st.button("Generate My Trip", type="primary", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -141,7 +151,7 @@ with right:
         st.image(img_url, use_container_width=True)
         st.caption(wiki_desc[:250] + "...")
     else:
-        st.info("Enter a destination to see a preview")
+        st.info("Enter a destination to see a live preview from Wikipedia")
 
 # ─── GENERATE ────────────────────────────────────────────
 if plan_btn:
@@ -149,7 +159,7 @@ if plan_btn:
         st.error("Please enter a destination!")
     else:
         progress = st.empty()
-        progress.info("Research Agent scanning... Planning Agent building itinerary... Budget Agent crunching numbers...")
+        progress.info("🔍 Research Agent scanning... ⏳ Planning Agent building itinerary... 💰 Budget Agent crunching numbers...")
         try:
             result = run_trip_planner(destination, duration, budget, currency, preferences)
             progress.empty()
@@ -162,43 +172,67 @@ if plan_btn:
                 "budget": budget, "currency": currency
             }
             
-            # SAVE TO DATABASE
             save_trip(destination, duration, budget, currency, preferences, result)
             st.toast("Trip saved to history! ✅")
             
         except Exception as e:
-            st.error(f"Error: {str(e)}")
+            st.error(f"Something went wrong: {str(e)}")
+            st.info("Tip: Try a more specific destination like 'Paris, France' instead of just 'Paris'")
 
 # ─── EDITABLE OUTPUT ─────────────────────────────────────
 if 'trip_result' in st.session_state:
     meta = st.session_state['trip_meta']
     result = st.session_state['trip_result']
     
-    tab1, tab2, tab3 = st.tabs(["📋 View & Edit", "💰 Budget Focus", "📥 Export"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 View & Edit", "💰 Budget & Charts", "🖼️ Gallery", "📥 Export"])
     
     with tab1:
         st.markdown("### ✏️ Edit Before Sending to Client")
+        st.caption("You can modify any text below. Your changes will reflect in the PDF.")
         edited = st.text_area("Editable Itinerary", result, height=500)
         if edited != result:
             st.session_state['trip_result'] = edited
-            st.toast("Changes saved!")
+            st.toast("Changes saved! Regenerate PDF to see updates.")
         
         st.markdown("---")
         st.markdown("### 🗺️ Preview with Map Links")
         st.markdown(add_map_links(edited, meta['destination']), unsafe_allow_html=True)
     
     with tab2:
-        st.markdown("### 💰 Budget Breakdown")
+        st.markdown("### 💰 Budget Analysis")
         if "Budget" in result:
-            st.markdown(result.split("Budget")[-1])
+            budget_section = result.split("Budget")[-1]
+            st.markdown(budget_section)
+            
+            budget_data = parse_budget_data(budget_section)
+            if budget_data:
+                chart = render_budget_chart(budget_data, meta['currency'])
+                if chart:
+                    st.pyplot(chart)
+            else:
+                st.info("Could not parse budget numbers for chart")
         else:
             st.markdown(result)
     
     with tab3:
+        st.markdown("### 🖼️ Destination Gallery")
+        with st.spinner("Loading photos..."):
+            photos = get_unsplash_photos(meta['destination'])
+        cols = st.columns(3)
+        for i, photo in enumerate(photos):
+            with cols[i % 3]:
+                st.image(photo, use_container_width=True)
+    
+    with tab4:
         st.markdown("### 📄 Export Final Version")
         final_text = st.session_state.get('trip_result', result)
         pdf_bytes = create_pdf(meta['destination'], meta['duration'], meta['budget'], meta['currency'], final_text, company_name, contact_info, brand_color)
-        st.download_button("Download Branded PDF", pdf_bytes, f"{company_name.replace(' ', '_')}_Trip_{meta['destination'].replace(' ', '_')}.pdf", "application/pdf")
+        st.download_button(
+            "📥 Download Branded PDF",
+            pdf_bytes,
+            f"{company_name.replace(' ', '_')}_Trip_{meta['destination'].replace(' ', '_').replace(',', '')}.pdf",
+            "application/pdf"
+        )
         
         st.markdown("---")
         st.markdown("**Share via WhatsApp:**")
@@ -207,4 +241,10 @@ if 'trip_result' in st.session_state:
 
 # ─── FOOTER ──────────────────────────────────────────────
 st.markdown("---")
-st.markdown(f"<div style='text-align:center; color:#9CA3AF; font-size:0.85rem;'>{company_name} | Built with TravelAgent AI</div>", unsafe_allow_html=True)
+st.markdown(
+    f"<div style='text-align:center; color:#9CA3AF; font-size:0.85rem;'>"
+    f"{company_name} | Built with TravelAgent AI | "
+    f"<a href='https://github.com/khodor2341/travel-agent' target='_blank'>View on GitHub</a>"
+    f"</div>",
+    unsafe_allow_html=True
+)
