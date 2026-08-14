@@ -164,3 +164,9 @@ if plan_btn:
 st.markdown("---")
 footer_html = "<div style='text-align:center; color:#9CA3AF; font-size:0.85rem;'>Built with Python + Groq LLM + Streamlit | <a href='https://github.com/khodor2341/travel-agent' target='_blank'>View on GitHub</a></div>"
 st.markdown(footer_html, unsafe_allow_html=True)
+destination = st.text_input(
+    "Where to?", 
+    "Tokyo, Japan", 
+    placeholder="One city: 'Paris'  OR  Multi-city: 'Paris, Rome, Dubai'"
+)
+st.caption("For multi-city trips, separate cities with commas")
