@@ -6,52 +6,79 @@ from fpdf import FPDF
 
 st.set_page_config(page_title="TravelAgent AI", page_icon="✈️", layout="wide")
 
-# ─── Custom CSS ──────────────────────────────────────────
-st.markdown("""
+# ─── SIDEBAR: White-Label Settings ───────────────────────
+with st.sidebar:
+    st.markdown("### 🎨 Brand Settings")
+    st.caption("Customize for your company")
+    
+    company_name = st.text_input("Company Name", "TravelAgent AI")
+    logo_url = st.text_input("Logo URL (optional)", "", placeholder="https://your-logo.png")
+    brand_color = st.color_picker("Brand Color", "#1E3A8A")
+    contact_info = st.text_input("Contact / Website", "contact@travelagent.ai")
+    
+    st.markdown("---")
+    st.markdown("**Powered by AI**")
+    st.caption("Built by Khodor | [GitHub](https://github.com/khodor2341/travel-agent)")
+
+# ─── Dynamic CSS with Brand Color ────────────────────────
+st.markdown(f"""
 <style>
-    .main-title { font-size: 3rem; font-weight: 800; background: linear-gradient(90deg, #1E3A8A, #3B82F6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .subtitle { font-size: 1.1rem; color: #6B7280; margin-bottom: 2rem; }
-    .stButton>button { background: linear-gradient(90deg, #1E3A8A, #3B82F6); color: white; border: none; border-radius: 10px; padding: 0.8rem 2rem; font-size: 1.1rem; font-weight: 600; }
-    .stButton>button:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(30,58,138,0.3); }
-    .card { background: #F8FAFC; border-radius: 16px; padding: 1.5rem; border: 1px solid #E2E8F0; }
+    .main-title {{ font-size: 3rem; font-weight: 800; color: {brand_color}; }}
+    .subtitle {{ font-size: 1.1rem; color: #6B7280; margin-bottom: 2rem; }}
+    .stButton>button {{ background-color: {brand_color}; color: white; border: none; border-radius: 10px; padding: 0.8rem 2rem; font-size: 1.1rem; font-weight: 600; }}
+    .stButton>button:hover {{ opacity: 0.9; transform: translateY(-2px); }}
+    .card {{ background: #F8FAFC; border-radius: 16px; padding: 1.5rem; border: 1px solid #E2E8F0; }}
+    .brand-header {{ display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }}
 </style>
 """, unsafe_allow_html=True)
 
-# ─── Helper: Clean text for PDF (Unicode → ASCII) ───────
+# ─── Helper: Clean text for PDF ──────────────────────────
 def clean_for_pdf(text):
-    replacements = {
-        '—': '--',
-        '–': '-',
-        ''': "'",
-        ''': "'",
-        '"': '"',
-        '"': '"',
-        '…': '...',
-        '•': '-',
-        '→': '->',
-        '←': '<-',
-        '€': 'EUR',
-        '£': 'GBP',
-        '¥': 'JPY',
-        '°': ' deg',
-    }
+    replacements = {'—': '--', '–': '-', ''': "'", ''': "'", '"': '"', '"': '"', '…': '...', '•': '-', '→': '->', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '°': ' deg'}
     for old, new in replacements.items():
         text = text.replace(old, new)
-    
-    emoji_pattern = re.compile("["
-        u"\U0001F600-\U0001F64F"
-        u"\U0001F300-\U0001F5FF"
-        u"\U0001F680-\U0001F6FF"
-        u"\U0001F1E0-\U0001F1FF"
-        u"\U00002702-\U000027B0"
-        u"\U000024C2-\U0001F251"
-        "]+", flags=re.UNICODE)
+    emoji_pattern = re.compile("["u"\U0001F600-\U0001F64F"u"\U0001F300-\U0001F5FF"u"\U0001F680-\U0001F6FF"u"\U0001F1E0-\U0001F1FF"u"\U00002702-\U000027B0"u"\U000024C2-\U0001F251""]+", flags=re.UNICODE)
     text = emoji_pattern.sub('', text)
     text = text.replace('#', '').replace('**', '').replace('*', '').replace('---', '').replace('>', '')
-    text = text.encode('latin-1', 'ignore').decode('latin-1')
-    return text
+    return text.encode('latin-1', 'ignore').decode('latin-1')
 
-# ─── Helper: Get Destination Image from Wikipedia ────────
+# ─── Helper: Create BRANDED PDF ──────────────────────────
+def create_pdf(destination, duration, budget, currency, content, company, contact, color):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Header with brand color
+    pdf.set_fill_color(int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16))
+    pdf.rect(0, 0, 210, 25, 'F')
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, company, ln=True, align="C")
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(0, 6, contact, ln=True, align="C")
+    pdf.ln(5)
+    
+    # Title
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Arial", "B", 18)
+    pdf.cell(0, 12, f"Travel Plan: {destination}", ln=True, align="C")
+    pdf.set_font("Arial", "", 11)
+    pdf.cell(0, 8, f"{duration} Days | Budget: {budget} {currency}", ln=True, align="C")
+    pdf.ln(5)
+    
+    # Content
+    pdf.set_font("Arial", "", 10)
+    clean = clean_for_pdf(content)
+    pdf.multi_cell(0, 6, clean)
+    
+    # Footer
+    pdf.set_y(-30)
+    pdf.set_font("Arial", "I", 8)
+    pdf.set_text_color(128, 128, 128)
+    pdf.cell(0, 10, f"Prepared by {company} | Powered by TravelAgent AI", align="C")
+    
+    return bytes(pdf.output(dest="S"))
+
+# ─── Helper: Wikipedia Image ─────────────────────────────
 @st.cache_data(show_spinner=False)
 def get_destination_info(destination):
     try:
@@ -59,31 +86,19 @@ def get_destination_info(destination):
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{query}"
         r = requests.get(url, timeout=5)
         data = r.json()
-        img = data.get('thumbnail', {}).get('source')
-        desc = data.get('extract', '')
-        return img, desc
+        return data.get('thumbnail', {}).get('source'), data.get('extract', '')
     except:
         return None, ''
 
-# ─── Helper: Create PDF ──────────────────────────────────
-def create_pdf(destination, duration, budget, currency, content):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 20)
-    pdf.cell(0, 15, f"Travel Plan: {destination}", ln=True, align="C")
-    pdf.set_font("Arial", "", 12)
-    pdf.cell(0, 10, f"{duration} Days | Budget: {budget} {currency}", ln=True, align="C")
-    pdf.ln(8)
-    pdf.set_font("Arial", "", 11)
-    clean = clean_for_pdf(content)
-    pdf.multi_cell(0, 7, clean)
-    return bytes(pdf.output(dest="S"))
+# ─── HEADER ──────────────────────────────────────────────
+if logo_url:
+    st.markdown(f'<div class="brand-header"><img src="{logo_url}" width="60"><div class="main-title">{company_name}</div></div>', unsafe_allow_html=True)
+else:
+    st.markdown(f'<div class="main-title">{company_name}</div>', unsafe_allow_html=True)
 
-# ─── Header ──────────────────────────────────────────────
-st.markdown('<div class="main-title">TravelAgent AI</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Multi-Agent Smart Tourism Planning -- Research, Plan & Budget in Seconds</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Smart Tourism Planning — Research, Plan & Budget in Seconds</div>', unsafe_allow_html=True)
 
-# ─── Layout: Form + Image Preview ────────────────────────
+# ─── FORM + PREVIEW ──────────────────────────────────────
 left, right = st.columns([1, 1])
 
 with left:
@@ -99,9 +114,7 @@ with left:
         budget = st.number_input("Budget", 100, 50000, 2000)
     
     currency = st.selectbox("Currency", ["USD", "EUR", "GBP", "JPY", "AED", "CAD"])
-    preferences = st.text_area("Travel Style & Preferences", 
-        "local food, photography spots, walking tours, avoid tourist traps",
-        placeholder="What do you love? Any must-haves or deal-breakers?")
+    preferences = st.text_area("Travel Style", "local food, photography, walking tours, avoid crowds")
     
     plan_btn = st.button("Generate My Trip", type="primary", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -110,12 +123,11 @@ with right:
     img_url, wiki_desc = get_destination_info(destination)
     if img_url:
         st.image(img_url, use_container_width=True)
-        if wiki_desc:
-            st.caption(wiki_desc[:250] + "...")
+        st.caption(wiki_desc[:250] + "...")
     else:
-        st.info("Enter a destination to see a live preview from Wikipedia")
+        st.info("Enter a destination to see a preview")
 
-# ─── Results Section ─────────────────────────────────────
+# ─── RESULTS ─────────────────────────────────────────────
 if plan_btn:
     if not destination.strip():
         st.error("Please enter a destination!")
@@ -138,35 +150,27 @@ if plan_btn:
             with tab2:
                 st.markdown("### Budget Breakdown")
                 if "Budget" in result:
-                    parts = result.split("Budget")
-                    st.markdown(parts[-1])
+                    st.markdown(result.split("Budget")[-1])
                 else:
                     st.markdown(result)
             
             with tab3:
-                st.markdown("### Download Your Itinerary")
-                pdf_bytes = create_pdf(destination, duration, budget, currency, result)
+                st.markdown("### Download Branded Itinerary")
+                pdf_bytes = create_pdf(destination, duration, budget, currency, result, company_name, contact_info, brand_color)
                 st.download_button(
-                    "Download PDF",
+                    "Download Branded PDF",
                     pdf_bytes,
-                    f"Trip_{destination.replace(' ', '_').replace(',', '')}.pdf",
+                    f"{company_name.replace(' ', '_')}_Trip_{destination.replace(' ', '_').replace(',', '')}.pdf",
                     "application/pdf"
                 )
                 st.markdown("---")
-                st.markdown("**Raw Markdown (copy to Notion/Obsidian):**")
+                st.markdown("**Raw Markdown:**")
                 st.code(result, language="markdown")
                 
         except Exception as e:
-            st.error(f"Something went wrong: {str(e)}")
-            st.info("Tip: Try a more specific destination like 'Paris, France' instead of just 'Paris'")
+            st.error(f"Error: {str(e)}")
+            st.info("Tip: Try 'Paris, France' instead of just 'Paris'")
 
-# ─── Footer ──────────────────────────────────────────────
+# ─── FOOTER ──────────────────────────────────────────────
 st.markdown("---")
-footer_html = "<div style='text-align:center; color:#9CA3AF; font-size:0.85rem;'>Built with Python + Groq LLM + Streamlit | <a href='https://github.com/khodor2341/travel-agent' target='_blank'>View on GitHub</a></div>"
-st.markdown(footer_html, unsafe_allow_html=True)
-destination = st.text_input(
-    "Where to?", 
-    "Tokyo, Japan", 
-    placeholder="One city: 'Paris'  OR  Multi-city: 'Paris, Rome, Dubai'"
-)
-st.caption("For multi-city trips, separate cities with commas")
+st.markdown(f"<div style='text-align:center; color:#9CA3AF; font-size:0.85rem;'>{company_name} | Built with TravelAgent AI</div>", unsafe_allow_html=True)

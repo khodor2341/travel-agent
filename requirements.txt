@@ -1,5 +1,5 @@
 python-dotenv
 streamlit
-groq
+openai
 fpdf2
 requests
