@@ -3,20 +3,47 @@ import requests
 import re
 from agents import run_trip_planner
 from fpdf import FPDF
+from database import save_trip, get_all_trips, get_trip, delete_trip
 
 st.set_page_config(page_title="TravelAgent AI", page_icon="✈️", layout="wide")
 
-# ─── SIDEBAR: Brand Settings ─────────────────────────────
+# ─── SIDEBAR ─────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 🎨 Brand Settings")
     company_name = st.text_input("Company Name", "TravelAgent AI")
     logo_url = st.text_input("Logo URL", "")
     brand_color = st.color_picker("Brand Color", "#1E3A8A")
     contact_info = st.text_input("Contact", "contact@travelagent.ai")
+    
+    st.markdown("---")
+    st.markdown("### 📚 Trip History")
+    
+    trips = get_all_trips()
+    if trips:
+        for trip in trips:
+            tid, dest, dur, bud, cur, created = trip
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                if st.button(f"🌍 {dest} ({dur}d) — {created}", key=f"load_{tid}"):
+                    full = get_trip(tid)
+                    if full:
+                        st.session_state['trip_result'] = full[6]
+                        st.session_state['trip_meta'] = {
+                            "destination": full[1], "duration": full[2],
+                            "budget": full[3], "currency": full[4]
+                        }
+                        st.rerun()
+            with col2:
+                if st.button("🗑️", key=f"del_{tid}"):
+                    delete_trip(tid)
+                    st.rerun()
+    else:
+        st.caption("No saved trips yet.")
+    
     st.markdown("---")
     st.caption("Built by Khodor")
 
-# ─── Dynamic CSS ─────────────────────────────────────────
+# ─── CSS ─────────────────────────────────────────────────
 st.markdown(f"""
 <style>
     .main-title {{ font-size: 3rem; font-weight: 800; color: {brand_color}; }}
@@ -24,7 +51,6 @@ st.markdown(f"""
     .stButton>button {{ background-color: {brand_color}; color: white; border-radius: 10px; padding: 0.8rem 2rem; font-weight: 600; }}
     .card {{ background: #F8FAFC; border-radius: 16px; padding: 1.5rem; border: 1px solid #E2E8F0; }}
     .map-link {{ color: #2563EB; text-decoration: none; font-size: 0.85rem; }}
-    .map-link:hover {{ text-decoration: underline; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -73,15 +99,12 @@ def get_destination_info(destination):
         return None, ''
 
 def add_map_links(text, destination):
-    """Extract attraction names and add Google Maps links."""
     lines = text.split('\n')
     result = []
     for line in lines:
-        # Match lines like "- 09:00: Eiffel Tower (location)" or "1. Eiffel Tower"
         match = re.match(r'^(\s*[\d\-:\.]+\s*)(.+?)(\s*\(.+?\))?$', line)
-        if match and len(match.group(2).strip()) > 3 and not match.group(2).strip().startswith('http'):
+        if match and len(match.group(2).strip()) > 3:
             place = match.group(2).strip()
-            # Skip common non-attraction words
             skip = ['lunch', 'dinner', 'breakfast', 'hotel', 'transport', 'flight', 'check-in', 'check-out', 'buffer', 'free time', 'rest', 'travel']
             if not any(s in place.lower() for s in skip):
                 query = f"{place}, {destination.split(',')[0]}"
@@ -120,7 +143,7 @@ with right:
     else:
         st.info("Enter a destination to see a preview")
 
-# ─── RESULTS ─────────────────────────────────────────────
+# ─── GENERATE ────────────────────────────────────────────
 if plan_btn:
     if not destination.strip():
         st.error("Please enter a destination!")
@@ -133,29 +156,32 @@ if plan_btn:
             st.balloons()
             st.success("Your trip is ready!")
             
-            # Store in session for editing
             st.session_state['trip_result'] = result
-            st.session_state['trip_meta'] = {"destination": destination, "duration": duration, "budget": budget, "currency": currency}
+            st.session_state['trip_meta'] = {
+                "destination": destination, "duration": duration,
+                "budget": budget, "currency": currency
+            }
+            
+            # SAVE TO DATABASE
+            save_trip(destination, duration, budget, currency, preferences, result)
+            st.toast("Trip saved to history! ✅")
+            
         except Exception as e:
             st.error(f"Error: {str(e)}")
 
-# ─── EDITABLE OUTPUT (persists after generation) ─────────
+# ─── EDITABLE OUTPUT ─────────────────────────────────────
 if 'trip_result' in st.session_state:
     meta = st.session_state['trip_meta']
     result = st.session_state['trip_result']
-    
-    # Add map links
-    result_with_maps = add_map_links(result, meta['destination'])
     
     tab1, tab2, tab3 = st.tabs(["📋 View & Edit", "💰 Budget Focus", "📥 Export"])
     
     with tab1:
         st.markdown("### ✏️ Edit Before Sending to Client")
-        st.caption("You can modify any text below. Your changes will reflect in the PDF.")
         edited = st.text_area("Editable Itinerary", result, height=500)
         if edited != result:
             st.session_state['trip_result'] = edited
-            st.toast("Changes saved! Regenerate PDF to see updates.")
+            st.toast("Changes saved!")
         
         st.markdown("---")
         st.markdown("### 🗺️ Preview with Map Links")
