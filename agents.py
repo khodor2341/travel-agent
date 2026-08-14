@@ -1,17 +1,14 @@
 import os
 import json
 import hashlib
+from datetime import datetime, timedelta
 from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-
-# 8B model = 10x cheaper on tokens than 70B
 MODEL = "llama-3.1-8b-instant"
-
-# ─── File Cache (never burn tokens twice) ────────────────
 CACHE_FILE = "cache.json"
 
 def _load_cache():
@@ -31,10 +28,8 @@ def _get_key(prompt):
 def _call_groq(system_prompt, user_prompt):
     cache = _load_cache()
     key = _get_key(system_prompt + user_prompt)
-    
     if key in cache:
         return cache[key]
-    
     response = client.chat.completions.create(
         model=MODEL,
         messages=[
@@ -44,14 +39,25 @@ def _call_groq(system_prompt, user_prompt):
         temperature=0.7,
         max_tokens=3000
     )
-    
     result = response.choices[0].message.content
     cache[key] = result
     _save_cache(cache)
     return result
 
-# ─── Agents ──────────────────────────────────────────────
-def run_trip_planner(destination, duration, budget, currency, preferences):
+def run_trip_planner(destination, duration, budget, currency, preferences, start_date=None):
+    # Build date context
+    date_context = ""
+    date_header = ""
+    if start_date:
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d")
+            dates = [(start + timedelta(days=i)).strftime("%A, %B %d, %Y") for i in range(duration)]
+            date_context = "Use these EXACT dates for each day:\n" + "\n".join([f"Day {i+1}: {d}" for i, d in enumerate(dates)])
+            end = start + timedelta(days=duration-1)
+            date_header = f"**Dates:** {start.strftime('%B %d, %Y')} to {end.strftime('%B %d, %Y')}"
+        except:
+            pass
+    
     research = _call_groq(
         "You are a seasoned travel blogger.",
         f"Research {destination} for {duration} days. Traveler likes: {preferences}. Top 10 attractions, 5 restaurants, transport tips. Be specific."
@@ -59,7 +65,12 @@ def run_trip_planner(destination, duration, budget, currency, preferences):
 
     itinerary = _call_groq(
         "You are a logistics genius.",
-        f"Day-by-day itinerary for {duration} days in {destination}. Research: {research}. Group nearby spots. 9 AM start, 9 PM end."
+        f"""Day-by-day itinerary for {duration} days in {destination}.
+{date_context}
+
+Research: {research}
+Group nearby spots. 9 AM start, 9 PM end. Include meal times.
+If dates are provided above, use them as headers instead of 'Day 1'."""
     )
 
     budget_analysis = _call_groq(
@@ -71,6 +82,7 @@ def run_trip_planner(destination, duration, budget, currency, preferences):
 # Travel Plan: {destination}
 
 > **{duration} days** | **Budget:** {budget} {currency} | **Style:** {preferences}
+> {date_header}
 
 ---
 

@@ -131,10 +131,12 @@ with left:
     st.markdown("### Trip Details")
     destination = st.text_input("Where to?", "Tokyo, Japan", placeholder="e.g. Santorini, Greece")
     
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     with c1:
         duration = st.number_input("Days", 1, 14, 3)
     with c2:
+        start_date = st.date_input("Start Date", value=None, label_visibility="visible")
+    with c3:
         budget = st.number_input("Budget", 100, 50000, 2000)
     
     currency = st.selectbox("Currency", ["USD", "EUR", "GBP", "JPY", "AED", "CAD"])
@@ -161,7 +163,8 @@ if plan_btn:
         progress = st.empty()
         progress.info("🔍 Research Agent scanning... ⏳ Planning Agent building itinerary... 💰 Budget Agent crunching numbers...")
         try:
-            result = run_trip_planner(destination, duration, budget, currency, preferences)
+            start_date_str = start_date.strftime("%Y-%m-%d") if start_date else None
+            result = run_trip_planner(destination, duration, budget, currency, preferences, start_date_str)
             progress.empty()
             st.balloons()
             st.success("Your trip is ready!")
@@ -169,7 +172,8 @@ if plan_btn:
             st.session_state['trip_result'] = result
             st.session_state['trip_meta'] = {
                 "destination": destination, "duration": duration,
-                "budget": budget, "currency": currency
+                "budget": budget, "currency": currency,
+                "start_date": start_date.strftime("%Y-%m-%d") if start_date else None
             }
             
             save_trip(destination, duration, budget, currency, preferences, result)
