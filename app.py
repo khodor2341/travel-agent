@@ -6,7 +6,21 @@ from fpdf import FPDF
 from database import save_trip, get_all_trips, get_trip, delete_trip
 from visuals import get_unsplash_photos, parse_budget_data, render_budget_chart
 
+# Safe session state init
+for key in ['trip_result', 'trip_meta', 'template_prefs', 'template_budget_mult']:
+    if key not in st.session_state:
+        st.session_state[key] = None if key == 'trip_result' else {} if key == 'trip_meta' else "" if key == 'template_prefs' else 1.0
+
 st.set_page_config(page_title="TravelAgent AI", page_icon="✈️", layout="wide")
+# Initialize session state (prevents crashes)
+if 'trip_result' not in st.session_state:
+    st.session_state['trip_result'] = None
+if 'trip_meta' not in st.session_state:
+    st.session_state['trip_meta'] = {}
+if 'template_prefs' not in st.session_state:
+    st.session_state['template_prefs'] = ""
+if 'template_budget_mult' not in st.session_state:
+    st.session_state['template_budget_mult'] = 1.0
 
 # ─── SIDEBAR: Brand Settings + Trip History ──────────────
 with st.sidebar:
@@ -168,12 +182,14 @@ with left:
     destination = st.text_input("Where to?", "Tokyo, Japan", placeholder="e.g. Santorini, Greece")
     client_name = st.text_input("Client Name (optional)", "", placeholder="e.g. Sarah Ahmed")
     client_email = st.text_input("Client Email (optional)", "", placeholder="For direct email share")
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
         duration = st.number_input("Days", 1, 14, 3)
     with c2:
         start_date = st.date_input("Start Date", value=None)
     with c3:
+        travelers = st.number_input("Travelers", 1, 20, 2)
+    with c4:
         default_budget = int(2000 * st.session_state.get('template_budget_mult', 1.0))
         budget = st.number_input("Budget", 100, 50000, default_budget)
     
@@ -202,10 +218,44 @@ if plan_btn:
         progress.info("🔍 Research Agent scanning... ⏳ Planning Agent building itinerary... 💰 Budget Agent crunching numbers...")
         try:
             start_date_str = start_date.strftime("%Y-%m-%d") if start_date else None
-            result = run_trip_planner(destination, duration, budget, currency, preferences, start_date_str)
+            result = run_trip_planner(destination, duration, budget, currency, preferences, start_date_str, travelers)
             progress.empty()
             st.balloons()
             st.success("Your trip is ready!")
+            
+            # ─── TRIP SUMMARY CARD ─────────────────────────
+            meta = st.session_state['trip_meta']
+            img_url, _ = get_destination_info(meta['destination'])
+            
+            summary_col1, summary_col2 = st.columns([1, 2])
+            with summary_col1:
+                if img_url:
+                    st.image(img_url, use_container_width=True)
+            
+            with summary_col2:
+                st.markdown(f"### {meta['destination']}")
+                if meta.get('start_date'):
+                    st.markdown(f"📅 **{meta['start_date']}** → {meta['duration']} days")
+                st.markdown(f"👥 **{meta.get('travelers', 2)} travelers** | 💰 **{meta['budget']} {meta['currency']}** (~{meta['budget'] // meta.get('travelers', 2)} per person)")
+                
+                # Extract 3 highlights from research
+                highlights = []
+                for line in result.split('\n')[:20]:
+                    if any(x in line for x in ['🏛️', '🏰', '🗼', '🏖️', '🌅', 'must-see', 'famous', 'iconic']) and len(line) < 80:
+                        clean = line.replace('#', '').replace('*', '').replace('-', '').strip()[:40]
+                        if clean and clean not in highlights:
+                            highlights.append(clean)
+                    if len(highlights) >= 3:
+                        break
+                
+                if highlights:
+                    badge_color = brand_color.replace('#', '')
+                    st.markdown(
+                        " ".join([f"<span style='background:#{badge_color}22; color:{brand_color}; padding:4px 12px; border-radius:20px; font-size:0.85rem; margin-right:6px; border:1px solid {brand_color}44;'>{h}</span>" for h in highlights[:3]]),
+                        unsafe_allow_html=True
+                    )
+            
+            st.markdown("---")
             
             st.session_state['trip_result'] = result
             st.session_state['trip_meta'] = {
@@ -213,7 +263,8 @@ if plan_btn:
                 "budget": budget, "currency": currency,
                 "start_date": start_date.strftime("%Y-%m-%d") if start_date else None,
                 "client_name": client_name,
-                "client_email": client_email
+                "client_email": client_email,
+                "travelers": travelers
             }
             
             save_trip(destination, duration, budget, currency, preferences, result)
@@ -228,7 +279,7 @@ if 'trip_result' in st.session_state:
     meta = st.session_state['trip_meta']
     result = st.session_state['trip_result']
     
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 View & Edit", "💰 Budget & Charts", "🖼️ Gallery", "📥 Export"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 View & Edit", "💰 Budget & Charts", "🧳 Packing List", "🖼️ Gallery", "📥 Export"])
     
     with tab1:
         st.markdown("### ✏️ Edit Before Sending to Client")
@@ -240,8 +291,7 @@ if 'trip_result' in st.session_state:
         
         st.markdown("---")
         st.markdown("### 🗺️ Preview with Map Links")
-        st.markdown(add_map_links(edited, meta['destination']), unsafe_allow_html=True)
-    
+        st.markdown(add_map_links(edited, meta.get('destination', '')), unsafe_allow_html=True)
     with tab2:
         st.markdown("### 💰 Budget Analysis")
         if "Budget" in result:
@@ -259,18 +309,27 @@ if 'trip_result' in st.session_state:
             st.markdown(result)
     
     with tab3:
-        st.markdown("### 🖼️ Destination Gallery")
-        with st.spinner("Loading photos..."):
-            photos = get_unsplash_photos(meta['destination'])
-        cols = st.columns(3)
-        for i, photo in enumerate(photos):
-            with cols[i % 3]:
-                st.image(photo, use_container_width=True)
+        st.markdown("### 🧳 Smart Packing List")
+        if "Packing List" in result:
+            st.markdown(result.split("Packing List")[-1].split("---")[0])
+        else:
+            st.markdown("Packing list included in full itinerary above.")
+        
+        st.markdown("---")
+        st.caption(f"Customized for {meta.get('travelers', 2)} travelers to {meta['destination']}")
     
     with tab4:
+            st.markdown("### 🖼️ Destination Gallery")
+            with st.spinner("Loading photos..."):
+                photos = get_unsplash_photos(meta.get('destination', ''))
+            cols = st.columns(3)
+            for i, photo in enumerate(photos):
+                with cols[i % 3]:
+                    st.image(photo, use_container_width=True)
+    with tab5:
         st.markdown("### 📄 Export Final Version")
         final_text = st.session_state.get('trip_result', result)
-        pdf_bytes = create_pdf(meta['destination'], meta['duration'], meta['budget'], meta['currency'], final_text, company_name, contact_info, brand_color, meta.get('client_name', ''))
+        pdf_bytes = create_pdf(meta.get('destination', ''), meta.get('duration', 0), meta.get('budget', 0), meta.get('currency', 'USD'), final_text, company_name, contact_info, brand_color, meta.get('client_name', ''))
         st.download_button(
             "📥 Download Branded PDF",
             pdf_bytes,
